@@ -2,9 +2,25 @@ var express = require('express');
 var app = express();
 var bodyParser = require('body-parser');
 var postgres = require('./lib/postgres');
+var expressValidator = require('express-validator');
 
 app.use(bodyParser.json({ type: 'application/json' }));
+app.use(expressValidator());
 
+function validatePhoto(req, res, next) {
+    req.checkBody('description', 'Invalid description').notEmpty();
+    req.checkBody('album_id', 'Invalid album_id').isNumeric();
+    var errors = req.validationErrors();
+    if (errors) {
+      var response = { errors: [] };
+      errors.forEach(function(err) {
+        response.errors.push(err.msg);
+      });
+      res.statusCode = 400;
+      return res.json(response);
+    }
+    return next();
+   }
 
 function lookupPhoto(req, res, next) {
     console.log("TEST!" + req.params.id);
@@ -13,13 +29,13 @@ function lookupPhoto(req, res, next) {
     // Build an SQL query to select the resource object by ID
     var sql = 'SELECT * FROM photo WHERE id = $1';
     postgres.client.query(sql, [photoId], function (err, results) {
-        console.log("*");
+        
         if (err) {
             console.error(err);
             res.statusCode = 500;
             return res.json({ errors: ['Could not retrieve photo'] });
         }
-        console.log("**");
+        
         // No results returned mean the object is not found
         if (results.rows.length === 0) {
             // We are able to set the HTTP status code on the res object
@@ -36,7 +52,7 @@ function lookupPhoto(req, res, next) {
 
 var photoRouter = express.Router();
 photoRouter.get('/', function (req, res) { });
-photoRouter.post('/', function (req, res) {
+photoRouter.post('/', validatePhoto, function (req, res) {
 
     var sql = 'INSERT INTO photo (description, filepath, album_id) VALUES ($1,$2,$3) RETURNING id';
     // Retrieve the data to insert from the POST body
@@ -74,9 +90,7 @@ photoRouter.post('/', function (req, res) {
 }
 );
 
-photoRouter.get('/:id([0-9]+)', lookupPhoto, function (req, res) { 
-    console.log("TEST2" + req.photo);
-    
+photoRouter.get('/:id([0-9]+)', lookupPhoto, function (req, res) {     
     res.json(req.photo); });
 photoRouter.patch('/:id', lookupPhoto, function (req, res) { });
 photoRouter.delete('/:id', lookupPhoto, function (req, res) { });
